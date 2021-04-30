@@ -5,6 +5,7 @@ from import_export.resources import ModelResource
 
 from .forms import CustomConfirmImportForm, CustomImportForm
 from .models import Author, Book, Category, Child, EBook
+from .tests.test_resources import BookWithChapters
 
 
 class ChildAdmin(ImportMixin, admin.ModelAdmin):
@@ -24,6 +25,10 @@ class BookAdmin(ImportExportMixin, admin.ModelAdmin):
     list_display = ('name', 'author', 'added')
     list_filter = ['categories', 'author']
     resource_class = BookResource
+
+
+class BookWithChaptersAdmin(ImportExportMixin, admin.ModelAdmin):
+    pass
 
 
 class CategoryAdmin(ExportActionModelAdmin):
@@ -53,6 +58,7 @@ class CustomBookAdmin(BookAdmin):
 
 
 admin.site.register(Book, BookAdmin)
+admin.site.register(BookWithChapters, BookWithChaptersAdmin)
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(Author, AuthorAdmin)
 admin.site.register(Child, ChildAdmin)

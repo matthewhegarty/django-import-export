@@ -3,6 +3,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal
+from io import StringIO
 from unittest import mock, skip, skipIf, skipUnless
 
 import django
@@ -1196,6 +1197,29 @@ if 'postgresql' in settings.DATABASES['default']['ENGINE']:
             self.assertFalse(result.has_errors())
             self.assertEqual(len(result.rows), 1)
 
+            self.book.refresh_from_db()
+            self.assertEqual(self.book.data, self.data)
+
+    class TestImportExportJsonField(TestImportJsonField):
+
+        def test_json_format_preserved_after_import_export(self):
+            # issue #1216
+            # 1. create an object with JSON data
+            self.book.data = self.data
+            self.book.save()
+
+            # 2. export the JSON data field
+            resource = resources.modelresource_factory(model=BookWithChapters)()
+            result = resource.export(BookWithChapters.objects.all())
+            print(result.csv)
+
+            # 3. parse the export as a new file
+            with StringIO(result.csv) as f:
+                data_for_import = tablib.Dataset().load(f)
+                print(data_for_import)
+
+            # 4. Import the exported data
+            self.resource.import_data(self.dataset, raise_errors=True)
             self.book.refresh_from_db()
             self.assertEqual(self.book.data, self.data)
 
