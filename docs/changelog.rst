@@ -3,44 +3,89 @@ Changelog
 
 Please refer to :doc:`release notes<release_notes>`.
 
-4.0.0-alpha.6 (unreleased)
+4.0.0-beta.2 (unreleased)
 --------------------------
 
-- Added debug for missing fields & attributes during import (#1571)
-- added :meth:`~import_export.widgets.ForeignKeyWidget.get_lookup_kwargs` to make it easier to override object
-  lookup (#1651)
-- removed unused variable ``Result.new_record`` (#1640)
-- Refactor ``resources.py`` to standardise method args (#1641)
-- added specific check for missing ``import_id_fields`` (#1645)
-- Enable optional tablib dependencies (#1647)
-- Removed unused method ``utils.original()``
-- Clarified ``skip_diff`` documentation (#1655)
-- Standardised interface of :meth:`~import_export.widgets.Widget.render` (#1657)
+- fix declaring existing model field(s) in ModelResource altering export order (#1663)
+- Updated `docker-compose` command with latest version syntax in `runtests.sh` (#1686)
+- Support export from model change form (#1687)
+- Updated Admin UI to track deleted and skipped Imports (#1691)
+- Import form defaults to read-only field if only one format defined (#1690)
 - Improved documentation relating to validation on import (#1665)
 
-4.0.0-alpha.5 (2023-09-22)
+4.0.0-beta.1 (2023-11-16)
 --------------------------
 
-- dynamic widget parameters for CharField fixes 'NOT NULL constraint' error in xlsx (#1485)
-- refactor to export HTML / formulae escaping updates (#1638)
+Deprecations
+############
 
-4.0.0-alpha.0 (2023-09-20)
---------------------------
+- Removed v3 deprecations (#1629)
+- Deprecation of ``ExportViewFormMixin`` (#1666)
 
-- change_list.html: add default base_template value to fix django-compress (#1605)
+Enhancements
+############
+
 - Refactor ordering logic (#1626)
 
   - Refactor 'diff' logic to avoid calling dehydrate methods
 
   - Refactor declarations of ``fields``, ``import_order`` and ``export_order`` to fix ordering issues
 
+- refactor to export HTML / formulae escaping updates (#1638)
+- removed unused variable ``Result.new_record`` (#1640)
+- Refactor ``resources.py`` to standardise method args (#1641)
+- added specific check for missing ``import_id_fields`` (#1645)
+- Enable optional tablib dependencies (#1647)
+- added :meth:`~import_export.widgets.ForeignKeyWidget.get_lookup_kwargs` to make it easier to override object
+  lookup (#1651)
+- Standardised interface of :meth:`~import_export.widgets.Widget.render` (#1657)
+- Added :meth:`~import_export.resources.Resource.do_instance_save` helper method (#1668)
+- Enable defining Resource model as a string (#1669)
+- Support multiple Resources for export (#1671)
+
+Fixes
+#####
+
+- dynamic widget parameters for CharField fixes 'NOT NULL constraint' error in xlsx (#1485)
+- fix cooperation with adminsortable2 (#1633)
+- Removed unused method ``utils.original()``
+- Fix deprecated ``log_action`` method (#1673)
+
+Development
+###########
+
+- Refactor build process (#1630)
+- Refactored ``test_admin_integration()``: split into smaller test modules (#1662)
+- Refactored ``test_resources()``: split into smaller test modules (#1672)
+
+Documentation
+#############
+
+- Clarified ``skip_diff`` documentation (#1655)
+- Improved documentation relating to validation on import (#1665)
+
+3.3.4 (unreleased)
+------------------
+
+- Added `CONTRIBUTING.md`
+- Show list of exported fields in Admin UI (#1685)
+
+3.3.3 (2023-11-11)
+------------------
+
+- :meth:`~import_export.admin.ExportActionMixin.export_admin_action` can be overridden by subclassing it in the
+  ``ModelAdmin`` (#1681)
+
+3.3.2 (2023-11-09)
+------------------
+
 - Updated Spanish translations (#1639)
 - Added documentation and tests for retrieving instance information after import (#1643)
 - :meth:`~import_export.widgets.NumberWidget.render` returns ``None`` as empty string
   if ``coerce_to_string`` is True (#1650)
-- Removed v3 deprecations (#1629)
-- Refactor build process (#1630)
-- fix cooperation with adminsortable2 (#1633)
+- Updated documentation to describe how to select for export in Admin UI (#1670)
+- Added catch for django5 deprecation warning (#1676)
+- Updated and compiled message files (#1678)
 
 3.3.1 (2023-09-14)
 ------------------

@@ -39,6 +39,17 @@ Or the ``exclude`` option to blacklist fields::
             model = Book
             exclude = ('imported', )
 
+.. _field_ordering:
+
+Field ordering
+--------------
+
+The precedence for the order of fields for import / export is defined as follows:
+
+  * ``import_order`` or ``export_order`` (if defined)
+  * ``fields`` (if defined)
+  * The order derived from the underlying model instance.
+
 When importing or exporting, the ordering defined by ``fields`` is used, however an explicit order for importing or
 exporting fields can be set using the either the ``import_order`` or ``export_order`` options::
 
@@ -51,10 +62,11 @@ exporting fields can be set using the either the ``import_order`` or ``export_or
             export_order = ('id', 'price', 'author', 'name')
 
 Where ``import_order`` or ``export_order`` contains a subset of ``fields`` then the ``import_order`` and
-``export_order`` will be processed first.
+``export_order`` fields will be processed first.
 
 If no ``fields``, ``import_order`` or ``export_order`` is defined then fields are created via introspection of the model
-class.
+class.  The order of declared fields in the model instance is preserved, and any non-model fields are last in the
+ordering.
 
 .. _field_declaration:
 
@@ -356,7 +368,8 @@ data if it does not already exist.  It is possible to achieve this as follows::
 The code above can be adapted to handle m2m relationships.
 
 You can also achieve similar by subclassing the widget :meth:`~import_export.widgets.ForeignKeyWidget.clean` method to
-create the object if it does not already exist.
+create the object if it does not already exist.  An example for :class:`~import_export.widgets.ManyToManyWidget` is
+`here <https://github.com/django-import-export/django-import-export/issues/318#issuecomment-861813245>`_.
 
 Customize relation lookup
 -------------------------
@@ -645,6 +658,44 @@ To hook in the import-export workflow, you can connect to ``post_import``,
         # model is the actual model instance which after export
         pass
 
+.. _concurrent-writes:
+
+Concurrent writes
+=================
+
+There is specific consideration required if your application allows concurrent writes to data during imports.
+
+For example, consider this scenario:
+
+#. An import process is run to import new books identified by title.
+#. The :meth:`~import_export.resources.Resource.get_or_init_instance` is called and identifies that there is no
+   existing book with this title, hence the import process will create it as a new record.
+#. At that exact moment, another process inserts a book with the same title.
+#. As the row import process completes, :meth:`~import_export.resources.Resource.save` is called and an error is thrown
+   because the book already exists in the database.
+
+By default, import-export does not prevent this situation from occurring, therefore you need to consider what processes
+might be modifying shared tables during imports, and how you can mitigate risks.  If your database enforces integrity,
+then you may get errors raised, if not then you may get duplicate data.
+
+Potential solutions are:
+
+* Use one of the :doc:`import workflow<import_workflow>` methods to lock a table during import if the database supports
+  it.
+
+  * This should only be done in exceptional cases because there will be a performance impact.
+  * You will need to release the lock both in normal workflow and if there are errors.
+
+* Override :meth:`~import_export.resources.Resource.do_instance_save` to perform a
+  `update_or_create() <https://docs.djangoproject.com/en/stable/ref/models/querysets/#update_or_create>`_.
+  This can ensure that data integrity is maintained if there is concurrent access.
+
+* Modify working practices so that there is no risk of concurrent writes. For example, you could schedule imports to
+  only run at night.
+
+This issue may be more prevalent if using :doc:`bulk imports<bulk_import>`.  This is because instances are held in
+memory for longer before being written in bulk, therefore there is potentially more risk of another process modifying
+an instance before it has been persisted.
 
 .. _admin-integration:
 
@@ -687,41 +738,22 @@ dropdown in the UI.
 
    A screenshot of the change view with Import and Export buttons.
 
-Exporting via admin action
---------------------------
-
-Another approach to exporting data is by subclassing
-:class:`~import_export.admin.ExportActionModelAdmin` which implements
-export as an admin action. As a result it's possible to export a list of
-objects selected on the change list page::
-
-    # app/admin.py
-    from import_export.admin import ExportActionModelAdmin
-
-    class BookAdmin(ExportActionModelAdmin):
-        pass
-
-
-.. figure:: _static/images/django-import-export-action.png
-
-   A screenshot of the change view with Import and Export as an admin action.
-
-Note that to use the :class:`~import_export.admin.ExportMixin` or
-:class:`~import_export.admin.ExportActionMixin`, you must declare this mixin
-**before** ``admin.ModelAdmin``.
-
 .. _import-process:
 
 Importing
 ---------
 
-It is also possible to enable data import via standard Django admin interface.
-To do this subclass :class:`~import_export.admin.ImportExportModelAdmin` or use
+To enable import, subclass :class:`~import_export.admin.ImportExportModelAdmin` or use
 one of the available mixins, i.e. :class:`~import_export.admin.ImportMixin`, or
 :class:`~import_export.admin.ImportExportMixin`.
 
-By default, import is a two step process, though it can be configured to be a single step process
-(see :ref:`IMPORT_EXPORT_SKIP_ADMIN_CONFIRM`).
+Enabling import functionality means that a UI button will automatically be presented on the Admin page:
+
+.. figure:: _static/images/import-button.png
+   :alt: The import button
+
+When clicked, the user will be directed into the import workflow.  By default, import is a two step process, though
+it can be configured to be a single step process (see :ref:`import_export_skip_admin_confirm`).
 
 The two step process is:
 
@@ -731,12 +763,14 @@ The two step process is:
 .. _confirm-import-figure:
 
 .. figure:: _static/images/django-import-export-import.png
+   :alt: A screenshot of the 'import' view
 
-   A screenshot of the import view.
+   A screenshot of the 'import' view.
 
 .. figure:: _static/images/django-import-export-import-confirm.png
+   :alt: A screenshot of the 'confirm import' view
 
-   A screenshot of the confirm import view.
+   A screenshot of the 'confirm import' view.
 
 Import confirmation
 -------------------
@@ -754,7 +788,7 @@ There are three mechanisms for temporary storage.
 
 #. `Django storage <https://docs.djangoproject.com/en/stable/ref/files/storage/>`_.
 
-To modify which storage mechanism is used, please refer to the setting :ref:`IMPORT_EXPORT_TMP_STORAGE_CLASS`.
+To modify which storage mechanism is used, please refer to the setting :ref:`import_export_tmp_storage_class`.
 
 Temporary resources are removed when data is successfully imported after the confirmation step.
 
@@ -771,6 +805,82 @@ Your choice of temporary storage will be influenced by the following factors:
     or if there are errors during import, then temporary resources may not be deleted.
     This will need to be understood and managed in production settings.
     For example, using a cache expiration policy or cron job to clear stale resources.
+
+Exporting
+---------
+
+As with import, it is also possible to configure export functionality.
+
+To do this, subclass :class:`~import_export.admin.ImportExportModelAdmin` or use
+one of the available mixins, i.e. :class:`~import_export.admin.ExportMixin`, or
+:class:`~import_export.admin.ImportExportMixin`.
+
+Enabling export functionality means that a UI button will automatically be presented on the Admin page:
+
+.. figure:: _static/images/export-button.png
+   :alt: The export button
+
+When clicked, the user will be directed into the export workflow.
+
+Export is a two step process.  When the 'export' button is clicked, the user will be directed to a new screen,
+where 'resource' and 'file format' can be selected.
+
+.. _export_confirm:
+
+.. figure:: _static/images/django-import-export-export-confirm.png
+   :alt: the export confirm page
+
+   The export 'confirm' page.
+
+Once 'submit' is clicked, the export file will be automatically downloaded to the client (usually to the 'Downloads'
+folder).
+
+.. _export_via_admin_action:
+
+Exporting via Admin action
+--------------------------
+
+It's possible to configure the Admin UI so that users can select which items they want to export:
+
+
+.. image:: _static/images/select-for-export.png
+  :alt: Select items for export
+
+To do this, simply declare an Admin instance which includes  :class:`~import_export.admin.ExportActionMixin`::
+
+  class BookAdmin(ImportExportModelAdmin, ExportActionMixin):
+    # additional config can be supplied if required
+    pass
+
+Then register this Admin::
+
+  admin.site.register(Book, BookAdmin)
+
+Note that the above example refers specifically to the :ref:`example application<exampleapp>`, you'll have to modify
+this to refer to your own model instances.  In the example application, the 'Category' model has this functionality.
+
+When 'Go' is clicked for the selected items, the user will be directed to the
+:ref:`export 'confirm' page<export_confirm>`.  It is possible to disable this extra step by setting the
+:ref:`import_export_skip_admin_action_export_ui` flag
+
+Export from model instance change form
+--------------------------------------
+
+When :ref:`export via admin action<export_via_admin_action>` is enabled, then it is also possible to export from a
+model instance change form:
+
+.. figure:: _static/images/change-form-export.png
+   :alt: export from change form
+
+   Export from model instance change form
+
+When 'Export' is clicked, the user will be directed to the :ref:`export 'confirm' page<export_confirm>`.
+
+This button can be removed from the UI by setting the
+:attr:`~import_export.admin.ExportActionMixin.show_change_form_export` attribute, for example::
+
+  class CategoryAdmin(ExportActionModelAdmin):
+      show_change_form_export = False
 
 Customize admin import forms
 ----------------------------

@@ -7,6 +7,7 @@ from html import escape
 
 import tablib
 from diff_match_patch import diff_match_patch
+from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import (
     FieldDoesNotExist,
@@ -58,8 +59,8 @@ class ResourceOptions:
 
     model = None
     """
-    Django Model class. It is used to introspect available
-    fields.
+    Django Model class or full application label string. It is used to introspect
+    available fields.
 
     """
     fields = None
@@ -234,6 +235,9 @@ class ResourceOptions:
     :class:`~import_export.results.RowResult`.
     Enabling this parameter will increase the memory usage during import
     which should be considered when importing large datasets.
+
+    This value will always be set to ``True`` when importing via the Admin UI.
+    This is so that appropriate ``LogEntry`` instances can be created.
     """
 
     use_natural_foreign_keys = False
@@ -247,6 +251,20 @@ class ResourceOptions:
 
 class DeclarativeMetaclass(type):
     def __new__(cls, name, bases, attrs):
+        def _load_meta_options(base_, meta_):
+            options = getattr(base_, "Meta", None)
+
+            for option in [
+                option
+                for option in dir(options)
+                if not option.startswith("_") and hasattr(options, option)
+            ]:
+                option_value = getattr(options, option)
+                if option == "model" and isinstance(option_value, str):
+                    option_value = apps.get_model(option_value)
+
+                setattr(meta_, option, option_value)
+
         declared_fields = []
         meta = ResourceOptions()
 
@@ -257,13 +275,7 @@ class DeclarativeMetaclass(type):
             if hasattr(base, "fields"):
                 declared_fields = list(base.fields.items()) + declared_fields
                 # Collect the Meta options
-                options = getattr(base, "Meta", None)
-                for option in [
-                    option
-                    for option in dir(options)
-                    if not option.startswith("_") and hasattr(options, option)
-                ]:
-                    setattr(meta, option, getattr(options, option))
+                _load_meta_options(base, meta)
 
         # Add direct fields
         for field_name, obj in attrs.copy().items():
@@ -275,15 +287,8 @@ class DeclarativeMetaclass(type):
 
         attrs["fields"] = OrderedDict(declared_fields)
         new_class = super().__new__(cls, name, bases, attrs)
-
-        # Add direct options
-        options = getattr(new_class, "Meta", None)
-        for option in [
-            option
-            for option in dir(options)
-            if not option.startswith("_") and hasattr(options, option)
-        ]:
-            setattr(meta, option, getattr(options, option))
+        # add direct fields
+        _load_meta_options(new_class, meta)
         new_class._meta = meta
 
         return new_class
@@ -553,8 +558,18 @@ class Resource(metaclass=DeclarativeMetaclass):
                 # we don't have transactions and we want to do a dry_run
                 pass
             else:
-                instance.save()
+                self.do_instance_save(instance)
         self.after_save_instance(instance, row, **kwargs)
+
+    def do_instance_save(self, instance):
+        """
+        A method specifically to provide a single overridable hook for the instance
+        save operation.
+        For example, this can be overridden to implement update_or_create().
+
+        :param instance: The model instance to be saved.
+        """
+        instance.save()
 
     def before_save_instance(self, instance, row, **kwargs):
         r"""
@@ -900,6 +915,12 @@ class Resource(metaclass=DeclarativeMetaclass):
               The index of the row being imported.
         """
         skip_diff = self._meta.skip_diff
+
+        if not self._meta.store_instance:
+            self._meta.store_instance = kwargs.get(
+                "retain_instance_in_row_result", False
+            )
+
         row_result = self.get_row_result_class()()
         if self._meta.store_row_values:
             row_result.row_values = row
@@ -924,7 +945,8 @@ class Resource(metaclass=DeclarativeMetaclass):
                     row_result.import_type = RowResult.IMPORT_TYPE_DELETE
                     row_result.add_instance_info(instance)
                     if self._meta.store_instance:
-                        row_result.instance = instance
+                        # create a copy before deletion so id fields are retained
+                        row_result.instance = deepcopy(instance)
                     self.delete_instance(instance, row, **kwargs)
                     if not skip_diff:
                         diff.compare_with(self, None)
@@ -1333,10 +1355,15 @@ class ModelDeclarativeMetaclass(DeclarativeMetaclass):
                     continue
                 if opts.exclude and f.name in opts.exclude:
                     continue
-                if f.name in declared_fields:
-                    continue
 
-                field = new_class.field_from_django_field(f.name, f, readonly=False)
+                if f.name in declared_fields:
+                    # If model field is declared in `ModelResource`,
+                    # remove it from `declared_fields`
+                    # to keep exact order of model fields
+                    field = declared_fields.pop(f.name)
+                else:
+                    field = new_class.field_from_django_field(f.name, f, readonly=False)
+
                 field_list.append(
                     (
                         f.name,
@@ -1344,7 +1371,8 @@ class ModelDeclarativeMetaclass(DeclarativeMetaclass):
                     )
                 )
 
-            new_class.fields.update(OrderedDict(field_list))
+            # Order as model fields first then declared fields by default
+            new_class.fields = OrderedDict([*field_list, *new_class.fields.items()])
 
             # add fields that follow relationships
             if opts.fields is not None:

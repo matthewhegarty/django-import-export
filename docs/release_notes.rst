@@ -5,7 +5,9 @@ Release Notes
 v4
 ==
 
-v4 introduces breaking changes in order to fix some long-standing issues.
+v4 introduces significant updates to import-export.  We have taken the opportunity to introduce
+breaking changes in order to fix some long-standing issues.
+
 Refer to the :doc:`changelog<changelog>` for more information. Please ensure you test
 thoroughly before deploying v4 to production.
 
@@ -23,15 +25,17 @@ installation)::
 
   django-import-export[all]
 
+Functional changes
+==================
 
 CharWidget
-==========
+----------
 
-:meth:`~import_export.widgets.CharWidget.clean` will now return a string type as the default.
-The ``coerce_to_string`` option introduced in v3 is no longer used in this method.
+* :meth:`~import_export.widgets.CharWidget.clean` will now return a string type as the default.
+  The ``coerce_to_string`` option introduced in v3 is no longer used in this method.
 
 Export format
-=============
+-------------
 
 We have standardized the export output which is returned from
 :meth:`~import_export.widgets.Widget.render`.
@@ -42,9 +46,46 @@ In v4, return values are rendered as strings by default (where applicable), with
 
 Refer to the :doc:`documentation<api_widgets>` for more information.
 
-The ``obj`` param passed to :meth:`~import_export.widgets.Widget.render` is deprecated.
-The :meth:`~import_export.widgets.Widget.render` method should not need to have a reference to
-model instance.
+Export field order
+------------
+
+The ordering rules for exported fields has been standardized. See :ref:`documentation<field_ordering>`.
+
+Deprecations
+============
+
+* The ``obj`` param passed to :meth:`~import_export.widgets.Widget.render` is deprecated.
+  The :meth:`~import_export.widgets.Widget.render` method should not need to have a reference to
+  model instance.
+
+* Use of ``ExportViewFormMixin`` is deprecated.  See `this issue <https://github.com/django-import-export/django-import-export/issues/1666>`_.
+
+Admin UI
+========
+
+LogEntry
+--------
+
+``LogEntry`` instances are created during import for creates, updates and deletes.
+The functionality to store ``LogEntry`` has changed in v4 in order to address a deprecation in Django 5.
+For this to work correctly, deleted instances are now always copied and retained in each
+:class:`~import_export.results.RowResult` so that they can be recorded in each ``LogEntry``.
+
+This only occurs for delete operations initiated from the Admin UI.
+
+Export action
+-------------
+
+The export action has been updated to include the export workflow.  Prior to v4, it was possible to select export
+selected items using an export admin action.  However this meant that the export workflow was skipped and it was not
+possible to select the export resource.  This has been fixed in v4 so that export workflow is now present when
+exporting via the Admin UI action.  For more information see :ref:`export documentation<export_via_admin_action>`.
+
+Success message
+---------------
+
+The success message shown on successful import has been updated to include the number of 'deleted' and 'skipped' rows.
+See `this PR <https://github.com/django-import-export/django-import-export/issues/1691>`_.
 
 API changes
 ===========
@@ -266,3 +307,28 @@ Parameter changes
    * - ``export(self, obj)``
      - ``export(self, instance)``
      - * ``obj`` renamed to ``instance``
+
+
+:class:`import_export.forms.ImportExportFormBase`
+-------------------------------------------------
+
+If you have subclassed one of the :mod:`~import_export.forms` then you may need to
+modify the parameters passed to constructors.
+
+The ``input_format`` field of :class:`~import_export.forms.ImportForm` has been moved to the parent class
+(:class:`~import_export.forms.ImportExportFormBase`) and renamed to ``format``.
+
+Parameter changes
+^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+
+   * - Previous
+     - New
+     - Summary
+
+   * - ``__init__(self, *args, resources=None, **kwargs)``
+     - ``__init__(self, formats, resources, *args, **kwargs)``
+     - * ``formats`` added as a mandatory arg
+       * ``resources`` added as a mandatory arg

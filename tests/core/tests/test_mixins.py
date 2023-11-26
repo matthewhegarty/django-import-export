@@ -1,3 +1,4 @@
+import warnings
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -7,6 +8,7 @@ from django.test.testcases import TestCase
 from django.urls import reverse
 
 from import_export import admin, formats, forms, mixins, resources
+from import_export.resources import modelresource_factory
 
 from .utils import ignore_widget_deprecation_warning
 
@@ -20,9 +22,10 @@ class ExportViewMixinTest(TestCase):
         self.cat1 = Category.objects.create(name="Cat 1")
         self.cat2 = Category.objects.create(name="Cat 2")
         self.form = ExportViewMixinTest.TestExportForm(
-            formats.base_formats.DEFAULT_FORMATS
+            formats=formats.base_formats.DEFAULT_FORMATS,
+            resources=[modelresource_factory(Category)],
         )
-        self.form.cleaned_data["file_format"] = "0"
+        self.form.cleaned_data["format"] = "0"
 
     def test_get(self):
         response = self.client.get(self.url)
@@ -32,9 +35,11 @@ class ExportViewMixinTest(TestCase):
     @ignore_widget_deprecation_warning
     def test_post(self):
         data = {
-            "file_format": "0",
+            "format": "0",
         }
-        response = self.client.post(self.url, data)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            response = self.client.post(self.url, data)
         self.assertContains(response, self.cat1.name, status_code=200)
         self.assertTrue(response.has_header("Content-Disposition"))
         self.assertEqual(response["Content-Type"], "text/csv")
@@ -58,7 +63,9 @@ class ExportViewMixinTest(TestCase):
         with mock.patch("import_export.mixins.HttpResponse") as mock_http_response:
             # on first instantiation, raise TypeError, on second, return mock
             mock_http_response.side_effect = [TypeError(), mock_http_response]
-            m.form_valid(self.form)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                m.form_valid(self.form)
             self.assertEqual(
                 content_type, mock_http_response.call_args_list[0][1]["content_type"]
             )
@@ -90,7 +97,9 @@ class ExportViewMixinTest(TestCase):
                 return MagicMock()
 
         m = TestMixin()
-        res = m.form_valid(self.form)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            res = m.form_valid(self.form)
         self.assertEqual(200, res.status_code)
         self.assertEqual(1, m.mock_get_filterset_call_count)
         self.assertEqual(1, m.mock_get_filterset_class_call_count)
