@@ -228,6 +228,17 @@ class DateTimeWidgetTest(TestCase, RowDeprecationTestMixin):
         self.datetime = datetime(2012, 8, 13, 18, 0, 0, tzinfo=pytz.timezone("UTC"))
         self.assertEqual(self.datetime, self.widget.clean(self.datetime))
 
+    @skipUnless(
+        django.VERSION[0] >= 5, f"running django {django.VERSION} version specific test"
+    )
+    @ignore_utcnow_deprecation_warning
+    @override_settings(USE_TZ=True, TIME_ZONE="Europe/Ljubljana")
+    def test_render_django5(self):
+        # issue 1736
+        from django.db.models.functions import Now
+
+        self.widget.render(Now())
+
     @override_settings(DATETIME_INPUT_FORMATS=None)
     def test_default_format(self):
         self.widget = widgets.DateTimeWidget()
