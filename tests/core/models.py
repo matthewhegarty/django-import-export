@@ -4,6 +4,7 @@ import uuid
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.expressions import RawSQL
 
 
 class AuthorManager(models.Manager):
@@ -80,7 +81,14 @@ class Book(models.Model):
     published = models.DateField("Published", blank=True, null=True)
     published_time = models.TimeField("Time published", blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    offer = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     added = models.DateTimeField(blank=True, null=True)
+    cost = models.GeneratedField(
+        expression=RawSQL("COALESCE(price, offer)", []),
+        db_column="cost",
+        output_field=models.DecimalField(max_digits=10, decimal_places=2),
+        db_persist=True,
+    )
 
     categories = models.ManyToManyField(Category, blank=True)
 
